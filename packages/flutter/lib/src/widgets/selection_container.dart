@@ -122,6 +122,28 @@ class _SelectionContainerState extends State<SelectionContainer>
   }
 
   @override
+  void deactivate() {
+    // Unsubscribe from the registrar so that a new SelectionContainer that
+    // mounts in the same frame (e.g. when SelectableRegion's build method
+    // restructures its subtree) can register without hitting the
+    // `_selectable == null` assertion in SelectableRegionState.add().
+    // See https://github.com/flutter/flutter/issues/186459.
+    registrar = null;
+    super.deactivate();
+  }
+
+  @override
+  void activate() {
+    super.activate();
+    // Restore registration after reactivation (e.g. a GlobalKey move).
+    // The widget.registrar == null case is handled by didChangeDependencies(),
+    // which Flutter calls after activate() when the element had dependencies.
+    if (!widget._disabled && widget.registrar != null) {
+      registrar = widget.registrar;
+    }
+  }
+
+  @override
   void didUpdateWidget(SelectionContainer oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.delegate != widget.delegate) {

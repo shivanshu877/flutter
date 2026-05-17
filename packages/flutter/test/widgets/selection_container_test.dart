@@ -200,6 +200,55 @@ void main() {
     await tester.pumpAndSettle();
     expect(registrar.selectables.length, 1);
   });
+
+  testWidgets('SelectionContainer unregisters from single-slot registrar when parent type changes', (
+    WidgetTester tester,
+  ) async {
+    // Regression test for https://github.com/flutter/flutter/issues/186459.
+    //
+    // When the immediate ancestor of a SelectionContainer changes type during a
+    // rebuild (e.g. because SelectableRegion conditionally wraps its build output
+    // in PlatformSelectableRegionContextMenu when the web context menu is toggled),
+    // Flutter deactivates the old subtree before inflating the new one. The old
+    // SelectionContainer must unregister in deactivate() so the incoming instance
+    // can register without hitting the `_selectable == null` assertion.
+    final _TestSingleSlotRegistrar registrar = _TestSingleSlotRegistrar();
+    final TestContainerDelegate delegate = TestContainerDelegate();
+    addTearDown(delegate.dispose);
+
+    bool useColoredBox = true;
+    late StateSetter setState;
+
+    await pumpContainer(
+      tester,
+      StatefulBuilder(
+        builder: (BuildContext context, StateSetter setter) {
+          setState = setter;
+          final Widget container = SelectionContainer(
+            registrar: registrar,
+            delegate: delegate,
+            child: const Text('hello', textDirection: TextDirection.ltr),
+          );
+          if (useColoredBox) {
+            return ColoredBox(color: const Color(0xFFFFFFFF), child: container);
+          }
+          return SizedBox(child: container);
+        },
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(registrar.selectable, isNotNull);
+
+    // Changing the parent type from ColoredBox to SizedBox causes Flutter to
+    // deactivate the old ColoredBox→SelectionContainer subtree and inflate a
+    // new SizedBox→SelectionContainer. Without the fix, the new
+    // SelectionContainer's initState() calls registrar.add() while the old one
+    // is still registered, triggering the assertion in _TestSingleSlotRegistrar.
+    setState(() { useColoredBox = false; });
+    await tester.pump();
+
+    expect(registrar.selectable, isNotNull);
+  });
 }
 
 class TestContainerDelegate extends MultiSelectableSelectionContainerDelegate {
@@ -222,4 +271,22 @@ class TestSelectionRegistrar extends SelectionRegistrar {
 
   @override
   void remove(Selectable selectable) => selectables.remove(selectable);
+}
+
+// A SelectionRegistrar that allows only one registered Selectable at a time,
+// mirroring the assertion in SelectableRegionState.add().
+class _TestSingleSlotRegistrar extends SelectionRegistrar {
+  Selectable? selectable;
+
+  @override
+  void add(Selectable s) {
+    assert(selectable == null, 'A Selectable is already registered.');
+    selectable = s;
+  }
+
+  @override
+  void remove(Selectable s) {
+    assert(selectable == s);
+    selectable = null;
+  }
 }
