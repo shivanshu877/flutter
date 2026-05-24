@@ -5,6 +5,7 @@
 import 'dart:js_interop';
 import 'dart:js_interop_unsafe';
 
+import 'package:flutter_driver/src/common/error.dart';
 import 'package:flutter_driver/src/extension/_extension_web.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -12,6 +13,19 @@ import 'package:flutter_test/flutter_test.dart';
 external JSObject get _window;
 
 void main() {
+  group('driverLog on web', () {
+    test('default logger does not throw', () {
+      expect(() => driverLog('TestSource', 'test message'), returnsNormally);
+    });
+
+    test('custom driverLog callback is invoked', () {
+      final List<String> log = <String>[];
+      driverLog = (String source, String message) => log.add('$source: $message');
+      driverLog('Src', 'msg');
+      expect(log, <String>['Src: msg']);
+    });
+  });
+
   group('test web_extension', () {
     late Future<Map<String, dynamic>> Function(Map<String, String>) call;
 

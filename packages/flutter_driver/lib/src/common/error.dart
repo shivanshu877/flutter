@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-import 'dart:io' show FileSystemException, stderr;
+import '_error_log_io.dart' if (dart.library.js_interop) '_error_log_web.dart';
 
 /// Standard error thrown by Flutter Driver API.
 class DriverError extends Error {
@@ -50,13 +50,6 @@ typedef DriverLogCallback = void Function(String source, String message);
 /// This can be set to a different callback to override the handling of log
 /// messages from the driver subsystem.
 ///
-/// The default implementation prints `"$source: $message"` to stderr.
-DriverLogCallback driverLog = _defaultDriverLogger;
-
-void _defaultDriverLogger(String source, String message) {
-  try {
-    stderr.writeln('$source: $message');
-  } on FileSystemException {
-    // May encounter IO error: https://github.com/flutter/flutter/issues/69314
-  }
-}
+/// The default implementation prints `"$source: $message"` to stderr on
+/// native platforms, and to the browser console on web.
+DriverLogCallback driverLog = defaultDriverLogger;
