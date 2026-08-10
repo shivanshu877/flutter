@@ -1983,9 +1983,19 @@ abstract class DefaultTextEditingStrategy
     );
   }
 
-  /// Moves the focus to the [activeDomElement].
+  /// Moves the focus to the [activeDomElement], if one is currently attached.
+  ///
+  /// Uses a defensive null check (?.) rather than [activeDomElement] because
+  /// this is invoked from placement / geometry-update paths that can run
+  /// after the strategy was disabled — for example a scheduled
+  /// `setEditableSizeAndTransform` handler firing on a torn-down field. In
+  /// that case [domElement] is null and the assert-only guarantee on
+  /// [activeDomElement] would throw a `Null check operator used on a null
+  /// value` in release/profile builds. Mirrors the same-shape guard applied
+  /// to `focusedFormElement?.focusWithoutScroll()` in
+  /// [GloballyPositionedTextEditingStrategy.placeElement] (#180795).
   void moveFocusToActiveDomElement() {
-    activeDomElement.focusWithoutScroll();
+    domElement?.focusWithoutScroll();
   }
 }
 
