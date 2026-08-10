@@ -1488,10 +1488,23 @@ abstract class FlutterCommand extends Command<void> {
       );
     }
 
-    final bool treeShakeIcons =
-        argParser.options.containsKey('tree-shake-icons') &&
-        buildMode.isPrecompiled &&
-        boolArg('tree-shake-icons');
+    // Precedence: an explicitly passed `--tree-shake-icons` / `--no-tree-shake-icons`
+    // CLI flag wins over the `flutter: tree-shake-icons:` value from pubspec.yaml,
+    // which in turn wins over the built-in default (`kIconTreeShakerEnabledDefault`).
+    // Some sub-commands don't register the flag; only consult it if it exists.
+    final bool hasTreeShakeIconsFlag = argParser.options.containsKey('tree-shake-icons');
+    final bool cliTreeShakeIconsParsed =
+        hasTreeShakeIconsFlag && (argResults?.wasParsed('tree-shake-icons') ?? false);
+    final bool? manifestTreeShakeIcons = project.manifest.treeShakeIcons;
+    final bool baseTreeShakeIcons;
+    if (cliTreeShakeIconsParsed) {
+      baseTreeShakeIcons = boolArg('tree-shake-icons');
+    } else if (manifestTreeShakeIcons != null) {
+      baseTreeShakeIcons = manifestTreeShakeIcons;
+    } else {
+      baseTreeShakeIcons = hasTreeShakeIconsFlag && boolArg('tree-shake-icons');
+    }
+    final bool treeShakeIcons = baseTreeShakeIcons && buildMode.isPrecompiled;
 
     final String? performanceMeasurementFile =
         argParser.options.containsKey(FlutterOptions.kPerformanceMeasurementFile)

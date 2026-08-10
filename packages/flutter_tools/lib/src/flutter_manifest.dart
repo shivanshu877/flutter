@@ -211,6 +211,20 @@ class FlutterManifest {
     return _flutterDescriptor['uses-material-design'] as bool? ?? false;
   }
 
+  /// Whether the `flutter: tree-shake-icons:` field is set in `pubspec.yaml`.
+  ///
+  /// Returns null when the field is absent, meaning callers should fall back to
+  /// the CLI flag / built-in default. When set, this value is overridden by an
+  /// explicitly passed `--tree-shake-icons` / `--no-tree-shake-icons` CLI flag.
+  ///
+  /// ```yaml
+  /// flutter:
+  ///   tree-shake-icons: false
+  /// ```
+  bool? get treeShakeIcons {
+    return _flutterDescriptor['tree-shake-icons'] as bool?;
+  }
+
   /// True if this Flutter module should use AndroidX dependencies.
   ///
   /// If false the deprecated Android Support library will be used.
@@ -540,6 +554,12 @@ void _validateFlutter(YamlMap? yaml, List<String> errors) {
     }
     switch (yamlKey) {
       case 'uses-material-design':
+        if (yamlValue is! bool) {
+          errors.add(
+            'Expected "$yamlKey" to be a bool, but got $yamlValue (${yamlValue.runtimeType}).',
+          );
+        }
+      case 'tree-shake-icons':
         if (yamlValue is! bool) {
           errors.add(
             'Expected "$yamlKey" to be a bool, but got $yamlValue (${yamlValue.runtimeType}).',

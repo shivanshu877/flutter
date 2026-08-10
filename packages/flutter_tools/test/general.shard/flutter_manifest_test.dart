@@ -84,6 +84,75 @@ flutter:
     expect(flutterManifest.usesMaterialDesign, true);
   });
 
+  testWithoutContext('FlutterManifest treeShakeIcons is null when unset', () async {
+    const manifest = '''
+name: test
+dependencies:
+  flutter:
+    sdk: flutter
+flutter:
+  uses-material-design: true
+''';
+    final FlutterManifest flutterManifest = FlutterManifest.createFromString(
+      manifest,
+      logger: logger,
+    )!;
+
+    expect(flutterManifest.treeShakeIcons, isNull);
+  });
+
+  testWithoutContext('FlutterManifest reads tree-shake-icons: false', () async {
+    const manifest = '''
+name: test
+dependencies:
+  flutter:
+    sdk: flutter
+flutter:
+  tree-shake-icons: false
+''';
+    final FlutterManifest flutterManifest = FlutterManifest.createFromString(
+      manifest,
+      logger: logger,
+    )!;
+
+    expect(flutterManifest.treeShakeIcons, false);
+  });
+
+  testWithoutContext('FlutterManifest reads tree-shake-icons: true', () async {
+    const manifest = '''
+name: test
+dependencies:
+  flutter:
+    sdk: flutter
+flutter:
+  tree-shake-icons: true
+''';
+    final FlutterManifest flutterManifest = FlutterManifest.createFromString(
+      manifest,
+      logger: logger,
+    )!;
+
+    expect(flutterManifest.treeShakeIcons, true);
+  });
+
+  testWithoutContext('FlutterManifest rejects non-bool tree-shake-icons', () async {
+    const manifest = '''
+name: test
+dependencies:
+  flutter:
+    sdk: flutter
+flutter:
+  tree-shake-icons: "nope"
+''';
+    final FlutterManifest? flutterManifest = FlutterManifest.createFromString(
+      manifest,
+      logger: logger,
+    );
+
+    expect(flutterManifest, isNull);
+    expect(logger.errorText, contains('Expected "tree-shake-icons" to be a bool'));
+  });
+
   testWithoutContext('FlutterManifest knows if generate is provided', () async {
     const manifest = '''
 name: test
