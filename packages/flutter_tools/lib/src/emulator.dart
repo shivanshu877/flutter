@@ -14,7 +14,9 @@ import 'android/java.dart';
 import 'base/context.dart';
 import 'base/file_system.dart';
 import 'base/logger.dart';
+import 'base/os.dart';
 import 'base/process.dart';
+import 'build_info.dart';
 import 'device.dart';
 import 'ios/ios_emulators.dart';
 
@@ -29,8 +31,10 @@ class EmulatorManager {
     required ProcessManager processManager,
     required AndroidWorkflow androidWorkflow,
     required FileSystem fileSystem,
+    required OperatingSystemUtils operatingSystemUtils,
   }) : _java = java,
        _androidSdk = androidSdk,
+       _operatingSystemUtils = operatingSystemUtils,
        _processUtils = ProcessUtils(logger: logger, processManager: processManager),
        _androidEmulators = AndroidEmulators(
          androidSdk: androidSdk,
@@ -45,6 +49,7 @@ class EmulatorManager {
   final Java? _java;
   final AndroidSdk? _androidSdk;
   final AndroidEmulators _androidEmulators;
+  final OperatingSystemUtils _operatingSystemUtils;
   final ProcessUtils _processUtils;
 
   // Constructing EmulatorManager is cheap; they only do expensive work if some
@@ -137,7 +142,8 @@ class EmulatorManager {
         error:
             'No suitable Android AVD system images are available. You may need to install these'
             ' using sdkmanager, for example:\n'
-            '  sdkmanager "system-images;android-27;google_apis_playstore;x86"',
+            '  sdkmanager "system-images;android-36;google_apis_playstore;'
+            '${_hostAbi ?? CpuArch.x64.androidArchName}"',
       );
     }
 
@@ -200,6 +206,44 @@ class EmulatorManager {
 
   static final _androidApiVersion = RegExp(r';android-(\d+);');
 
+  /// The Android ABIs Flutter can build for, as they appear in the trailing
+  /// segment of an `avdmanager` system image ID.
+  ///
+  /// An AVD created from an image outside this set runs an ABI Flutter produces
+  /// no libraries for, so `flutter run` reports it as an unsupported device.
+  static final _supportedAbis = <String>{
+    CpuArch.armv7.androidArchName,
+    CpuArch.arm64.androidArchName,
+    CpuArch.x64.androidArchName,
+  };
+
+  /// The Android ABI corresponding to the host architecture, or null when the
+  /// host has no Android equivalent.
+  ///
+  /// A system image whose ABI differs from the host's runs under full CPU
+  /// emulation instead of hardware acceleration, which is slow enough to make
+  /// the emulator impractical, so a matching image is preferred where one is
+  /// installed.
+  String? get _hostAbi {
+    final hostArch = CpuArch.fromHostPlatform(_operatingSystemUtils.hostPlatform);
+    return switch (hostArch) {
+      CpuArch.armv7 || CpuArch.arm64 || CpuArch.x64 => hostArch.androidArchName,
+      CpuArch.x86 || CpuArch.riscv64 || CpuArch.unknown => null,
+    };
+  }
+
+  /// The ABI segment of an `avdmanager` system image ID, or null if it has none.
+  ///
+  /// IDs are `;`-delimited with the ABI last, for example
+  /// `system-images;android-36;google_apis_playstore;arm64-v8a`.
+  static String? _abiOf(String systemImageId) {
+    final List<String> parts = systemImageId.split(';');
+    return parts.length < 4 ? null : parts.last;
+  }
+
+  static int _apiVersionOf(String systemImageId) =>
+      int.parse(_androidApiVersion.firstMatch(systemImageId)!.group(1)!);
+
   Future<String?> _getPreferredSdkId(String avdManagerPath) async {
     // It seems that to get the available list of images, we need to send a
     // request to create without the image and it'll provide us a list :-(
@@ -209,29 +253,32 @@ class EmulatorManager {
     // Get the list of IDs that match our criteria
     final List<String> availableIDs = runResult.stderr
         .split('\n')
+        .map((String l) => l.trim())
         .where((String l) => _androidApiVersion.hasMatch(l))
         .where((String l) => l.contains('system-images'))
         .where((String l) => l.contains('google_apis_playstore'))
+        // Creating an AVD from an unsupported ABI succeeds, but produces an
+        // emulator that can never run a Flutter app, so never select one.
+        .where((String l) => _supportedAbis.contains(_abiOf(l)))
         .toList();
 
-    final List<int> availableApiVersions = availableIDs
-        .map<String>((String id) => _androidApiVersion.firstMatch(id)!.group(1)!)
-        .map<int>((String apiVersion) => int.parse(apiVersion))
-        .toList();
-
-    // Get the highest Android API version or whats left
-    final int apiVersion = availableApiVersions.isNotEmpty
-        ? availableApiVersions.reduce(math.max)
-        : -1; // Don't match below
-
-    // We're out of preferences, we just have to return the first one with the high
-    // API version.
-    for (final id in availableIDs) {
-      if (id.contains(';android-$apiVersion;')) {
-        return id;
-      }
+    if (availableIDs.isEmpty) {
+      return null;
     }
-    return null;
+
+    // Prefer an image matching the host architecture, but fall back to any
+    // supported ABI rather than failing, so a usable emulator is still created.
+    final String? hostAbi = _hostAbi;
+    final List<String> hostMatchingIDs = availableIDs
+        .where((String id) => _abiOf(id) == hostAbi)
+        .toList();
+    final candidates = hostMatchingIDs.isNotEmpty ? hostMatchingIDs : availableIDs;
+
+    // Of the candidates, take the highest Android API version, keeping the
+    // earliest listed on a tie.
+    return candidates.reduce(
+      (String a, String b) => _apiVersionOf(a) >= _apiVersionOf(b) ? a : b,
+    );
   }
 
   /// Whether we're capable of listing any emulators given the current environment configuration.
